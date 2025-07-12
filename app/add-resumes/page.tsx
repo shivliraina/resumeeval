@@ -3,7 +3,6 @@
 import { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SparklesIcon, ArrowRightIcon, ArrowLeftIcon, DocumentIcon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -20,13 +19,15 @@ interface ResumeFile {
 export default function AddResumes() {
   const [resumes, setResumes] = useState<ResumeFile[]>([]);
   const [jobTitle, setJobTitle] = useState<string>("");
+  const [jobDescription, setJobDescription] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
   const router = useRouter();
 
   useEffect(() => {
     const savedJobTitle = localStorage.getItem("jobTitle");
-    if (savedJobTitle) {
-      setJobTitle(savedJobTitle);
-    }
+    const savedJobDescription = localStorage.getItem("jobDescription");
+    if (savedJobTitle) setJobTitle(savedJobTitle);
+    if (savedJobDescription) setJobDescription(savedJobDescription);
   }, []);
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -47,25 +48,79 @@ export default function AddResumes() {
     setResumes(resumes.filter(resume => resume.id !== id));
   };
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (resumes.length === 0) {
-      alert("Please upload at least one resume");
-      return;
+const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  
+  if (resumes.length === 0) {
+    alert("Please upload at least one resume");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const formData = new FormData();
+    formData.append('jobTitle', jobTitle);
+    formData.append('jobDescription', jobDescription);
+    
+    resumes.forEach((resume) => {
+      formData.append('resumes', resume.file);
+    });
+
+    console.log('Sending request to:', `${process.env.NEXT_PUBLIC_API_URL}/analyze-resumes`);
+    console.log('Form data:', {
+      jobTitle,
+      jobDescription: jobDescription.substring(0, 100) + '...',
+      resumeCount: resumes.length
+    });
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analyze-resumes`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    console.log('Response status:', response.status);
+    console.log('Response headers:', response.headers);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
     }
-    // Save resumes to localStorage
-    const resumeData = resumes.map(resume => ({
-      id: resume.id,
-      name: resume.name,
-      size: resume.size
-    }));
-    localStorage.setItem("resumes", JSON.stringify(resumeData));
+
+    const results = await response.json();
+    console.log('Success response:', results);
+    
+    localStorage.setItem("analysisResults", JSON.stringify(results));
     router.push("/results");
-  };
+
+  } catch (error) {
+    console.error('Analysis failed:', error);
+    // Fix: Handle the unknown error type
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    alert(`Failed to analyze resumes: ${errorMessage}`);
+  } finally {
+    setLoading(false);
+  }
+};
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+        <Card className="w-96">
+          <CardContent className="p-6 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Analyzing Resumes...</h3>
+            <p className="text-gray-600">Our AI is processing your resumes and generating match scores.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
+      {/* Header - same as before */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
@@ -116,12 +171,12 @@ export default function AddResumes() {
                   <Input
                     id="resumes"
                     type="file"
-                    accept=".pdf,.doc,.docx,.txt"
+                    accept=".pdf,.txt"
                     multiple
                     onChange={handleFileUpload}
                   />
                   <p className="text-sm text-gray-500 mt-1">
-                    Select multiple files. Supports PDF, Word, and text files (Max 10MB each)
+                    Select multiple files. Supports PDF and text files (Max 16MB each)
                   </p>
                 </div>
               </div>
@@ -163,9 +218,9 @@ export default function AddResumes() {
                 <Button 
                   type="submit" 
                   className="bg-blue-600 hover:bg-blue-700"
-                  disabled={resumes.length === 0}
+                  disabled={resumes.length === 0 || loading}
                 >
-                  Analyze Resumes
+                  {loading ? "Analyzing..." : "Analyze Resumes"}
                   <ArrowRightIcon className="ml-2 h-4 w-4" />
                 </Button>
               </div>

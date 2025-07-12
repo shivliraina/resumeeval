@@ -5,75 +5,70 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { SparklesIcon, ArrowLeftIcon, DocumentArrowDownIcon, ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/24/outline";
+import { SparklesIcon, ArrowLeftIcon, DocumentArrowDownIcon, ArrowRightIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 
 interface ResumeResult {
-  id: number;
-  name: string;
-  jobRole: string;
-  experience: string;
-  matchScore: number;
-  skills: string[];
-  status: "qualified" | "review";
+  candidate_name: string;
+  match_score: number;
+  experience_years: number;
+  matching_skills: string[];
+  missing_skills: string[];
+  strengths: string[];
+  weaknesses: string[];
+  recommendation: string;
+  summary: string;
+  error?: string;
 }
 
-interface SavedResume {
-  id: number;
-  name: string;
-  size: string;
+interface AnalysisResults {
+  job_title: string;
+  total_candidates: number;
+  results: ResumeResult[];
+  timestamp: string;
 }
 
 export default function Results() {
-  const [results, setResults] = useState<ResumeResult[]>([]);
-  const [jobTitle, setJobTitle] = useState<string>("");
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const savedJobTitle = localStorage.getItem("jobTitle");
-    const savedResumes = localStorage.getItem("resumes");
+    const savedResults = localStorage.getItem("analysisResults");
     
-    if (savedJobTitle) setJobTitle(savedJobTitle);
-    
-    if (savedResumes) {
-      const resumes: SavedResume[] = JSON.parse(savedResumes);
-      // Simulate AI processing
-      setTimeout(() => {
-        const mockResults: ResumeResult[] = resumes.map((resume, index) => ({
-          id: resume.id,
-          name: resume.name.replace(/\.[^/.]+$/, ""), // Remove file extension
-          jobRole: savedJobTitle || "Unknown Position",
-          experience: `${Math.floor(Math.random() * 8) + 1} years`,
-          matchScore: Math.floor(Math.random() * 30) + 70, // Random score between 70-100
-          skills: ["React", "JavaScript", "CSS", "Node.js", "Python"].slice(0, Math.floor(Math.random() * 3) + 2),
-          status: Math.random() > 0.3 ? "qualified" : "review"
-        }));
-        setResults(mockResults.sort((a, b) => b.matchScore - a.matchScore));
-        setLoading(false);
-      }, 2000);
+    if (savedResults) {
+      try {
+        const results: AnalysisResults = JSON.parse(savedResults);
+        setAnalysisResults(results);
+      } catch (error) {
+        console.error('Error parsing results:', error);
+      }
     }
+    
+    setLoading(false);
   }, []);
 
   const exportToExcel = () => {
-    // Create CSV content
+    if (!analysisResults) return;
+
     const csvContent = [
-      ["Name", "Job Role", "Experience", "Match Score", "Skills", "Status"],
-      ...results.map(result => [
-        result.name,
-        result.jobRole,
-        result.experience,
-        `${result.matchScore}%`,
-        result.skills.join("; "),
-        result.status
+      ["Rank", "Name", "Match Score", "Experience", "Recommendation", "Matching Skills", "Missing Skills", "Summary"],
+      ...analysisResults.results.map((result, index) => [
+        `#${index + 1}`,
+        result.candidate_name,
+        `${result.match_score}%`,
+        `${result.experience_years} years`,
+        result.recommendation,
+        result.matching_skills.join("; "),
+        result.missing_skills.join("; "),
+        result.summary
       ])
     ].map(row => row.join(",")).join("\n");
 
-    // Create and download file
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `resume-evaluation-${jobTitle.replace(/\s+/g, '-')}.csv`;
+    a.download = `resume-analysis-${analysisResults.job_title.replace(/\s+/g, '-')}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -85,8 +80,10 @@ export default function Results() {
     return "bg-red-100 text-red-800";
   };
 
-  const getStatusColor = (status: string): string => {
-    return status === "qualified" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800";
+  const getRecommendationColor = (recommendation: string): string => {
+    if (recommendation === "qualified") return "bg-green-100 text-green-800";
+    if (recommendation === "review") return "bg-yellow-100 text-yellow-800";
+    return "bg-red-100 text-red-800";
   };
 
   if (loading) {
@@ -94,9 +91,25 @@ export default function Results() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
         <Card className="w-96">
           <CardContent className="p-6 text-center">
-            <ArrowPathIcon className="h-12 w-12 text-blue-600 mx-auto mb-4 animate-spin" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Analyzing Resumes...</h3>
-            <p className="text-gray-600">Our AI is processing your resumes and generating match scores.</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading Results...</h3>
+            <p className="text-gray-600">Please wait while we load your analysis results.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!analysisResults) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+        <Card className="w-96">
+          <CardContent className="p-6 text-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Results Found</h3>
+            <p className="text-gray-600 mb-4">No analysis results were found. Please start a new analysis.</p>
+            <Link href="/upload-job">
+              <Button>Start New Analysis</Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
@@ -138,9 +151,12 @@ export default function Results() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Evaluation Results</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">AI Analysis Results</h2>
           <p className="text-lg text-gray-600">
-            Resume matching results for: <strong>{jobTitle}</strong>
+            Resume matching results for: <strong>{analysisResults.job_title}</strong>
+          </p>
+          <p className="text-sm text-gray-500">
+            Analysis completed on {new Date(analysisResults.timestamp).toLocaleString()}
           </p>
         </div>
 
@@ -150,7 +166,7 @@ export default function Results() {
               <div>
                 <CardTitle>Resume Analysis Results</CardTitle>
                 <p className="text-sm text-gray-600 mt-1">
-                  {results.length} candidates evaluated, sorted by match score
+                  {analysisResults.total_candidates} candidates evaluated, ranked by AI match score
                 </p>
               </div>
               <Button onClick={exportToExcel} variant="outline">
@@ -167,14 +183,15 @@ export default function Results() {
                     <TableHead>Rank</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Experience</TableHead>
-                    <TableHead>Key Skills</TableHead>
                     <TableHead>Match Score</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Recommendation</TableHead>
+                    <TableHead>Key Skills</TableHead>
+                    <TableHead>Summary</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {results.map((result, index) => (
-                    <TableRow key={result.id}>
+                  {analysisResults.results.map((result, index) => (
+                    <TableRow key={index}>
                       <TableCell>
                         <div className="flex items-center">
                           <span className="font-medium">#{index + 1}</span>
@@ -185,26 +202,36 @@ export default function Results() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="font-medium">{result.name}</TableCell>
-                      <TableCell>{result.experience}</TableCell>
+                      <TableCell className="font-medium">{result.candidate_name}</TableCell>
+                      <TableCell>{result.experience_years} years</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={getScoreColor(result.match_score)}>
+                          {result.match_score}%
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={getRecommendationColor(result.recommendation)}>
+                          {result.recommendation}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {result.skills.map((skill, i) => (
+                          {result.matching_skills.slice(0, 3).map((skill, i) => (
                             <Badge key={i} variant="secondary" className="text-xs">
                               {skill}
                             </Badge>
                           ))}
+                          {result.matching_skills.length > 3 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{result.matching_skills.length - 3} more
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className={getScoreColor(result.matchScore)}>
-                          {result.matchScore}%
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className={getStatusColor(result.status)}>
-                          {result.status === "qualified" ? "Qualified" : "Under Review"}
-                        </Badge>
+                      <TableCell className="max-w-xs">
+                        <p className="text-sm text-gray-600 truncate" title={result.summary}>
+                          {result.summary}
+                        </p>
                       </TableCell>
                     </TableRow>
                   ))}
